@@ -1,6 +1,6 @@
 [project]
 name = "screen-whiteboard"
-version = "2.0.0"
+version = "2.0.1"
 description = "开源屏幕白板工具：Qt 原生 HiDPI、流畅手写、全屏标注与截图保存"
 readme = "README.md"
 requires-python = ">=3.9"

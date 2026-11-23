@@ -89,7 +89,7 @@ class Launcher(QWidget):
                 painter.setPen(Qt.NoPen)
                 painter.setBrush(QColor(24, 20, 60, alpha))
                 painter.drawRoundedRect(
-                    content.adjusted(-spread, -spread + 3, spread, spread + 3),
+                    content.adjusted(-spread, -spread + 2, spread, spread),
                     radius + spread,
                     radius + spread,
                 )

@@ -6,7 +6,7 @@
 
 采用 Qt 原生渲染，自动适配 Retina 与高 DPI 屏幕，笔迹清晰、书写流畅。
 
-版本：2.0.0
+版本：2.0.1
 主页：https://github.com/tsingke/screen-whiteboard
 许可：MIT License，Copyright (c) 2026 tsingke
 
@@ -21,7 +21,7 @@ Windows
 macOS
 -----
 
-1. 打开 macOS\ScreenWhiteboard-macOS.dmg。
+1. 打开 macOS版\ScreenWhiteboard-macOS.dmg。
 2. 把 ScreenWhiteboard.app 拖到「应用程序」文件夹。
 3. 首次启动请在 Finder 中右键点击 App →「打开」，以绕过未签名应用的
    Gatekeeper 提示；也可以在终端执行：

@@ -69,7 +69,7 @@ screen-whiteboard
 
 | 下载文件 | 内容 |
 |---|---|
-| `ScreenWhiteboard-v2.0.0-Windows-macOS.zip` | 双平台合集，内含 `Windows版/` 与 `macOS版/` 两个独立文件夹 |
+| `ScreenWhiteboard-v2.0.1-Windows-macOS.zip` | 双平台合集，内含 `Windows版/` 与 `macOS版/` 两个独立文件夹 |
 | `ScreenWhiteboard-Windows.zip` | Windows 目录版压缩包 |
 | `ScreenWhiteboard-macOS.dmg` | macOS 安装镜像 |
 | `ScreenWhiteboard-macOS.zip` | macOS App 压缩包 |
@@ -77,7 +77,7 @@ screen-whiteboard
 合集解压后的结构：
 
 ```text
-ScreenWhiteboard-v2.0.0-Windows-macOS/
+ScreenWhiteboard-v2.0.1-Windows-macOS/
 ├── Windows版/
 │   ├── ScreenWhiteboard/
 │   │   ├── ScreenWhiteboard.exe
