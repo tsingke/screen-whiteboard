@@ -1,0 +1,101 @@
+name: build
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt zstandard
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -v
+
+  windows:
+    name: Windows
+    if: github.event_name != 'pull_request'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pyinstaller
+      - name: Build
+        run: >
+          pyinstaller --noconfirm --clean --onefile --windowed
+          --name ScreenWhiteboard --icon assets/screen-whiteboard.ico
+          main.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-binary
+          path: dist/ScreenWhiteboard.exe
+
+  macos:
+    name: macOS
+    if: github.event_name != 'pull_request'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pyinstaller
+      - name: Build
+        run: >
+          pyinstaller --noconfirm --clean --windowed
+          --name ScreenWhiteboard
+          --osx-bundle-identifier io.github.tsingke.screenwhiteboard
+          --icon assets/screen-whiteboard.icns
+          main.py
+      - name: Package app
+        run: ditto -c -k --sequesterRsrc --keepParent dist/ScreenWhiteboard.app ScreenWhiteboard-macOS.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-app
+          path: ScreenWhiteboard-macOS.zip
+
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [ windows, macos ]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Prepare assets
+        run: |
+          cp artifacts/windows-binary/ScreenWhiteboard.exe ScreenWhiteboard-Windows.exe
+          cp artifacts/macos-app/ScreenWhiteboard-macOS.zip ScreenWhiteboard-macOS.zip
+          sha256sum ScreenWhiteboard-Windows.exe ScreenWhiteboard-macOS.zip > SHA256SUMS.txt
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ScreenWhiteboard-Windows.exe
+            ScreenWhiteboard-macOS.zip
+            SHA256SUMS.txt
+          generate_release_notes: true

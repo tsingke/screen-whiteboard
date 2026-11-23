@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/dist/
+dist/
+*.spec
+.venv/
+venv/
+.DS_Store
+*.log
+extracted/
+*.iconset/
+
+.ruff_cache/
