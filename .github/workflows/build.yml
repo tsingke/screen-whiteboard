@@ -75,9 +75,11 @@ jobs:
         run: |
           VERSION=$(python -c "import screen_whiteboard; print(screen_whiteboard.__version__)")
           PLIST=dist/ScreenWhiteboard.app/Contents/Info.plist
-          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${VERSION}" "$PLIST"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${VERSION}" "$PLIST"
-          /usr/libexec/PlistBuddy -c "Add :NSHumanReadableCopyright string Copyright (c) 2026 tsingke <tsingke@hotmail.com>" "$PLIST" || true
+          for key in CFBundleShortVersionString CFBundleVersion; do
+            /usr/libexec/PlistBuddy -c "Set :${key} ${VERSION}" "$PLIST" 2>/dev/null \
+              || /usr/libexec/PlistBuddy -c "Add :${key} string ${VERSION}" "$PLIST"
+          done
+          /usr/libexec/PlistBuddy -c "Add :NSHumanReadableCopyright string Copyright (c) 2026 tsingke <tsingke@hotmail.com>" "$PLIST" 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$PLIST"
       - name: Ad-hoc sign
         run: |
