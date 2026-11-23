@@ -9,6 +9,7 @@ python3 -m pip install --upgrade pip
 python3 -m pip install -r requirements.txt pyinstaller
 
 pyinstaller --noconfirm --clean --windowed \
+  --workpath build/pyinstaller --distpath dist \
   --name ScreenWhiteboard \
   --osx-bundle-identifier io.github.tsingke.screenwhiteboard \
   --icon assets/screen-whiteboard.icns \

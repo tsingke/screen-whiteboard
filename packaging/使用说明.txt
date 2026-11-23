@@ -1,0 +1,42 @@
+屏幕白板 Screen Whiteboard
+========================
+
+一个开源的屏幕标注教学工具：右上角悬浮「开始手写」按钮，点击后冻结屏幕，
+用鼠标在画面上书写、圈画，按 S 保存截图。
+
+版本：1.0.1
+主页：https://github.com/tsingke/screen-whiteboard
+许可：MIT License，Copyright (c) 2026 tsingke
+
+Windows
+-------
+
+1. 双击 Windows\ScreenWhiteboard.exe 启动。
+2. 首次运行可能被 SmartScreen 拦截：点击「更多信息」→「仍要运行」。
+3. 如需覆盖全部显示器，在命令提示符中运行：
+   ScreenWhiteboard.exe --all-monitors
+
+macOS
+-----
+
+1. 打开 macOS\ScreenWhiteboard-macOS.dmg。
+2. 把 ScreenWhiteboard.app 拖到「应用程序」文件夹。
+3. 首次启动请在 Finder 中右键点击 App →「打开」，以绕过未签名应用的
+   Gatekeeper 提示；也可以在终端执行：
+   xattr -dr com.apple.quarantine /Applications/ScreenWhiteboard.app
+4. 首次点击「开始手写」时，系统会要求「屏幕录制」权限：
+   系统设置 → 隐私与安全性 → 屏幕录制 → 勾选 ScreenWhiteboard。
+   授权后需要完全退出并重新打开 App。
+
+使用
+----
+
+· 点击右上角「开始手写」进入标注模式。
+· 按住按钮左键可以拖动位置；在按钮上右键退出程序。
+· R / G / B 切换红、绿、蓝；Y / K / W 切换黄、黑、白。
+· 1 ~ 9 切换线条粗细。
+· C 清除笔迹；Ctrl+Z 撤销上一笔。
+· S 或 Ctrl+S 保存截图（PNG / JPEG）。
+· Esc 退出标注模式。
+
+配置与更多参数见 GitHub 主页 README。

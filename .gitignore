@@ -12,3 +12,6 @@ extracted/
 *.iconset/
 
 .ruff_cache/
+build/lib/
+build/bdist.*
+build/pyinstaller/

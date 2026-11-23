@@ -52,12 +52,29 @@ screen-whiteboard
 
 在 [Releases](https://github.com/tsingke/screen-whiteboard/releases) 下载：
 
-| 平台 | 文件 |
+| 下载文件 | 内容 |
 |---|---|
-| Windows | `ScreenWhiteboard-Windows.exe` |
-| macOS | `ScreenWhiteboard-macOS.zip`（内含 .app） |
+| `ScreenWhiteboard-v1.0.1-Windows-macOS.zip` | 双平台合集，内含 `Windows版/` 与 `macOS版/` 两个独立文件夹 |
+| `ScreenWhiteboard-Windows.exe` | Windows 单文件版 |
+| `ScreenWhiteboard-macOS.dmg` | macOS 安装镜像 |
+| `ScreenWhiteboard-macOS.zip` | macOS App 压缩包 |
 
-Windows 直接双击运行；macOS 解压后把 `.app` 拖到「应用程序」即可。
+合集解压后的结构：
+
+```text
+ScreenWhiteboard-v1.0.1-Windows-macOS/
+├── Windows版/
+│   ├── ScreenWhiteboard.exe
+│   ├── 使用说明.txt
+│   └── LICENSE.txt
+└── macOS版/
+    ├── ScreenWhiteboard-macOS.dmg
+    ├── ScreenWhiteboard-macOS.zip
+    ├── 使用说明.txt
+    └── LICENSE.txt
+```
+
+Windows 直接双击 `ScreenWhiteboard.exe` 运行。macOS 打开 DMG，把 `ScreenWhiteboard.app` 拖到「应用程序」；首次启动请右键点击 App 选择「打开」，并在「系统设置 → 隐私与安全性 → 屏幕录制」中授权。
 
 ## 快捷键
 

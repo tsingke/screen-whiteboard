@@ -1,6 +1,6 @@
 [project]
 name = "screen-whiteboard"
-version = "1.0.0"
+version = "1.0.1"
 description = "开源屏幕白板教学工具：悬浮按钮、全屏标注、截图保存（Windows/macOS/Linux）"
 readme = "README.md"
 requires-python = ">=3.8"

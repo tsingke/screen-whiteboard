@@ -6,6 +6,7 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt pyinstaller
 
 pyinstaller --noconfirm --clean --onefile --windowed ^
+  --workpath build\pyinstaller --distpath dist ^
   --name ScreenWhiteboard ^
   --icon assets\screen-whiteboard.ico ^
   main.py

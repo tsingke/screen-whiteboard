@@ -42,6 +42,7 @@ jobs:
       - name: Build
         run: >
           pyinstaller --noconfirm --clean --onefile --windowed
+          --workpath build/pyinstaller --distpath dist
           --name ScreenWhiteboard --icon assets/screen-whiteboard.ico
           main.py
       - uses: actions/upload-artifact@v4
@@ -65,21 +66,66 @@ jobs:
       - name: Build
         run: >
           pyinstaller --noconfirm --clean --windowed
+          --workpath build/pyinstaller --distpath dist
           --name ScreenWhiteboard
           --osx-bundle-identifier io.github.tsingke.screenwhiteboard
           --icon assets/screen-whiteboard.icns
           main.py
+      - name: Ad-hoc sign
+        run: |
+          codesign --force --deep --sign - dist/ScreenWhiteboard.app
+          codesign --verify --deep --strict --verbose=2 dist/ScreenWhiteboard.app
       - name: Package app
         run: ditto -c -k --sequesterRsrc --keepParent dist/ScreenWhiteboard.app ScreenWhiteboard-macOS.zip
+      - name: Create DMG
+        run: |
+          hdiutil create -volname "ScreenWhiteboard" \
+            -srcfolder dist/ScreenWhiteboard.app \
+            -ov -format UDZO ScreenWhiteboard-macOS.dmg
       - uses: actions/upload-artifact@v4
         with:
           name: macos-app
-          path: ScreenWhiteboard-macOS.zip
+          path: |
+            ScreenWhiteboard-macOS.zip
+            ScreenWhiteboard-macOS.dmg
+
+  bundle:
+    name: Bundle
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [ windows, macos ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-binary
+          path: artifacts/windows
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos-app
+          path: artifacts/macos
+      - name: Assemble Windows + macOS bundle
+        run: |
+          set -e
+          mkdir -p "pkg/Windows版" "pkg/macOS版"
+          cp artifacts/windows/ScreenWhiteboard.exe "pkg/Windows版/"
+          cp packaging/使用说明.txt "pkg/Windows版/使用说明.txt"
+          cp LICENSE "pkg/Windows版/LICENSE.txt"
+          cp artifacts/macos/ScreenWhiteboard-macOS.dmg "pkg/macOS版/"
+          cp artifacts/macos/ScreenWhiteboard-macOS.zip "pkg/macOS版/"
+          cp packaging/使用说明.txt "pkg/macOS版/使用说明.txt"
+          cp LICENSE "pkg/macOS版/LICENSE.txt"
+          ( cd pkg && zip -r "../ScreenWhiteboard-${GITHUB_REF_NAME}-Windows-macOS.zip" . )
+          ls -lh *.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: all-platforms
+          path: ScreenWhiteboard-*-Windows-macOS.zip
 
   release:
     name: Release
     if: startsWith(github.ref, 'refs/tags/')
-    needs: [ windows, macos ]
+    needs: [ bundle ]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -91,11 +137,15 @@ jobs:
         run: |
           cp artifacts/windows-binary/ScreenWhiteboard.exe ScreenWhiteboard-Windows.exe
           cp artifacts/macos-app/ScreenWhiteboard-macOS.zip ScreenWhiteboard-macOS.zip
-          sha256sum ScreenWhiteboard-Windows.exe ScreenWhiteboard-macOS.zip > SHA256SUMS.txt
+          cp artifacts/macos-app/ScreenWhiteboard-macOS.dmg ScreenWhiteboard-macOS.dmg
+          cp artifacts/all-platforms/ScreenWhiteboard-*-Windows-macOS.zip .
+          sha256sum ScreenWhiteboard-Windows.exe ScreenWhiteboard-macOS.zip ScreenWhiteboard-macOS.dmg ScreenWhiteboard-*-Windows-macOS.zip > SHA256SUMS.txt
       - uses: softprops/action-gh-release@v2
         with:
           files: |
             ScreenWhiteboard-Windows.exe
             ScreenWhiteboard-macOS.zip
+            ScreenWhiteboard-macOS.dmg
+            ScreenWhiteboard-*-Windows-macOS.zip
             SHA256SUMS.txt
           generate_release_notes: true
