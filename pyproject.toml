@@ -5,7 +5,7 @@ description = "开源屏幕白板工具：Qt 原生 HiDPI、流畅手写、全�
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
-authors = [{ name = "tsingke", email = "tsingke@hotmail.com" }]
+authors = [{ name = "张庆科", email = "tsingke@hotmail.com" }]
 keywords = ["whiteboard", "annotation", "screen", "handwriting", "qt", "hidpi", "windows", "macos"]
 classifiers = [
     "Development Status :: 4 - Beta",

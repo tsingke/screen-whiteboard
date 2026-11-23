@@ -6,6 +6,7 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <title>屏幕白板 Screen Whiteboard</title>
 <meta name="description" content="开源、跨平台的屏幕白板：Qt 原生 HiDPI、流畅手写、悬浮按钮标注与截图。支持 Windows 与 macOS，MIT 许可。">
+<meta name="author" content="张庆科">
 <meta name="theme-color" content="#f6f7fb" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0b0b12" media="(prefers-color-scheme: dark)">
 <link rel="canonical" href="https://tsingke.github.io/screen-whiteboard/">
@@ -25,6 +26,7 @@
   "operatingSystem": "Windows, macOS",
   "applicationCategory": "EducationalApplication",
   "description": "开源屏幕白板：Qt 原生 HiDPI、流畅手写、悬浮按钮标注与截图。",
+  "author": { "@type": "Person", "name": "张庆科", "email": "tsingke@hotmail.com" },
   "license": "https://opensource.org/licenses/MIT",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "CNY" }
 }
@@ -69,7 +71,7 @@ try {
   --band-line: rgba(255, 255, 255, .14);
   --radius: 20px;
   --radius-sm: 12px;
-  --container: 1180px;
+  --container: 1560px;
   --font-body: "Inter", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   --font-display: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   --font-latin: "Space Grotesk", "Inter", system-ui, sans-serif;
@@ -160,7 +162,7 @@ button { font: inherit; }
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
 }
-.wrap { width: min(var(--container), 100%); margin-inline: auto; }
+.wrap { width: min(var(--container), 100% - clamp(0px, 6vw, 160px)); margin-inline: auto; }
 
 .skip {
   position: absolute;
@@ -782,6 +784,11 @@ kbd {
 .footer-brand { display: grid; gap: 14px; align-content: start; }
 .footer-brand .brand { align-items: flex-start; }
 .footer-brand p { color: var(--muted); font-size: 13px; max-width: 34ch; line-height: 1.7; }
+.developer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+.developer span { color: var(--faint); font-family: var(--font-latin); font-size: 10.5px; font-weight: 600; letter-spacing: .13em; text-transform: uppercase; }
+.developer strong { color: var(--ink); font-weight: 600; }
+.developer a { color: var(--brand); text-decoration: none; }
+.developer a:hover { text-decoration: underline; }
 .footer-col h4 {
   margin: 0 0 12px;
   color: var(--faint);
@@ -1228,6 +1235,7 @@ kbd {
             <span class="brand-text"><strong>屏幕白板</strong><small>Screen Whiteboard</small></span>
           </a>
           <p>开源的屏幕白板工具。Qt 原生 HiDPI，书写流畅，Windows 与 macOS 都能用。</p>
+          <div class="developer"><span>Developer</span><strong>张庆科</strong><a href="mailto:tsingke@hotmail.com">tsingke@hotmail.com</a></div>
         </div>
         <div class="footer-col">
           <h4>项目</h4>
@@ -1248,7 +1256,7 @@ kbd {
         </div>
       </div>
       <div class="footer-bottom">
-        <span>© 2026 tsingke · MIT License · 本项目为独立开发</span>
+        <span>© 2026 张庆科 · MIT License · 本项目为独立开发 · tsingke@hotmail.com</span>
         <span>界面使用 PySide6 / Qt（LGPLv3），遵循各自许可证</span>
       </div>
     </div>

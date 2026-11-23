@@ -209,11 +209,17 @@ QT_QPA_PLATFORM=offscreen python -m unittest discover -s tests -v
 
 测试覆盖按键映射、配置合并、笔迹渲染与标注层，共 25 项。不需要真实桌面。
 
+## 开发者
+
+张庆科 · tsingke@hotmail.com
+
+项目由张庆科独立开发与维护。问题反馈或功能建议，欢迎通过 GitHub Issues 联系。
+
 ## 许可证
 
 本项目以 MIT License 发布。
 
-Copyright (c) 2026 tsingke <tsingke@hotmail.com>
+Copyright (c) 2026 张庆科 <tsingke@hotmail.com>
 
 运行时使用 PySide6 / Qt（LGPLv3）、Python（PSF License）等开源组件，遵循各自的许可证。详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
