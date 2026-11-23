@@ -11,6 +11,9 @@
 [![Python](https://img.shields.io/badge/python-3.9%2B-3776ab.svg)](https://www.python.org/)
 [![Qt](https://img.shields.io/badge/Qt-6.6%2B-41cd52.svg)](https://www.qt.io/)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-6b7280.svg)](#平台说明)
+[![Website](https://img.shields.io/badge/website-tsingke.github.io-6c4cf1.svg)](https://tsingke.github.io/screen-whiteboard/)
+
+在线主页：**https://tsingke.github.io/screen-whiteboard/**
 
 ![界面示意图](docs/ui-preview.png)
 
