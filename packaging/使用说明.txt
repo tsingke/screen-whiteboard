@@ -4,7 +4,7 @@
 一个开源的屏幕标注教学工具：右上角悬浮「开始手写」按钮，点击后冻结屏幕，
 用鼠标在画面上书写、圈画，按 S 保存截图。
 
-版本：1.0.1
+版本：1.0.2
 主页：https://github.com/tsingke/screen-whiteboard
 许可：MIT License，Copyright (c) 2026 tsingke
 

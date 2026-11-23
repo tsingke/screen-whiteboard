@@ -54,7 +54,7 @@ screen-whiteboard
 
 | 下载文件 | 内容 |
 |---|---|
-| `ScreenWhiteboard-v1.0.1-Windows-macOS.zip` | 双平台合集，内含 `Windows版/` 与 `macOS版/` 两个独立文件夹 |
+| `ScreenWhiteboard-v1.0.2-Windows-macOS.zip` | 双平台合集，内含 `Windows版/` 与 `macOS版/` 两个独立文件夹 |
 | `ScreenWhiteboard-Windows.exe` | Windows 单文件版 |
 | `ScreenWhiteboard-macOS.dmg` | macOS 安装镜像 |
 | `ScreenWhiteboard-macOS.zip` | macOS App 压缩包 |
@@ -62,7 +62,7 @@ screen-whiteboard
 合集解压后的结构：
 
 ```text
-ScreenWhiteboard-v1.0.1-Windows-macOS/
+ScreenWhiteboard-v1.0.2-Windows-macOS/
 ├── Windows版/
 │   ├── ScreenWhiteboard.exe
 │   ├── 使用说明.txt
@@ -145,6 +145,8 @@ bash build/build_macos.sh
 | Linux | ImageGrab / gnome-screenshot / spectacle / scrot / grim / ImageMagick | 安装其中任意一种截图工具即可；Wayland 下建议用 grim |
 
 macOS 的 Retina 屏幕截图是物理像素，程序会自动缩放到 Tk 的逻辑坐标，保证笔迹与画面严格对齐。
+
+Release 中的 macOS 构建为 Apple Silicon（arm64）。Intel Mac 可以从源码运行，或执行 `bash build/build_macos.sh` 自行打包。
 
 ## 项目结构
 

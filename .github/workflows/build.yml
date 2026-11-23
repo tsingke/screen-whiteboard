@@ -71,6 +71,14 @@ jobs:
           --osx-bundle-identifier io.github.tsingke.screenwhiteboard
           --icon assets/screen-whiteboard.icns
           main.py
+      - name: Set bundle metadata
+        run: |
+          VERSION=$(python -c "import screen_whiteboard; print(screen_whiteboard.__version__)")
+          PLIST=dist/ScreenWhiteboard.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${VERSION}" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${VERSION}" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :NSHumanReadableCopyright string Copyright (c) 2026 tsingke <tsingke@hotmail.com>" "$PLIST" || true
+          /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$PLIST"
       - name: Ad-hoc sign
         run: |
           codesign --force --deep --sign - dist/ScreenWhiteboard.app
