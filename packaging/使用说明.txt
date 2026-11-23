@@ -8,7 +8,7 @@
 
 版本：2.0.1
 主页：https://github.com/tsingke/screen-whiteboard
-许可：MIT License，Copyright (c) 2026 tsingke
+许可：MIT License，Copyright (c) 2026 张庆科
 
 Windows
 -------
