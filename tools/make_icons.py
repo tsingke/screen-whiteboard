@@ -227,20 +227,50 @@ def make_preview() -> None:
     draw.line([(380, 540), (560, 500), (780, 520)], fill=(21, 101, 192), width=5,
               joint="curve")
 
-    # 悬浮按钮
-    button = [1030, 28, 1170, 78]
+    # 悬浮按钮：圆角、渐变、投影
+    button = [1016, 24, 1176, 88]
+    bx, by = button[0], button[1]
+    bw, bh = button[2] - bx, button[3] - by
+
     shadow = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     sd = ImageDraw.Draw(shadow)
-    sd.rounded_rectangle([button[0] + 2, button[1] + 4, button[2] + 2, button[3] + 4],
-                         radius=12, fill=(20, 40, 80, 70))
-    shadow = shadow.filter(ImageFilter.GaussianBlur(6))
+    sd.rounded_rectangle(
+        [bx, by + 8, button[2], button[3] + 10],
+        radius=18, fill=(38, 26, 92, 95),
+    )
+    shadow = shadow.filter(ImageFilter.GaussianBlur(9))
     img = Image.alpha_composite(img.convert("RGBA"), shadow).convert("RGB")
+
+    grad = Image.new("RGB", (bw, bh))
+    gd = ImageDraw.Draw(grad)
+    top_color = (108, 76, 241)
+    bottom_color = (155, 107, 255)
+    for y in range(bh):
+        t = y / max(1, bh - 1)
+        gd.line([(0, y), (bw, y)], fill=tuple(
+            int(top_color[i] + (bottom_color[i] - top_color[i]) * t) for i in range(3)
+        ))
+    mask = Image.new("L", (bw, bh), 0)
+    ImageDraw.Draw(mask).rounded_rectangle([0, 0, bw - 1, bh - 1], radius=18, fill=255)
+    img.paste(grad, (bx, by), mask)
+
     draw = ImageDraw.Draw(img)
-    draw.rounded_rectangle(button, radius=12, fill=(26, 115, 232))
-    draw.text((1053, 40), "开始手写", font=load_font(22), fill=(255, 255, 255))
+    draw.rounded_rectangle(button, radius=18, outline=(255, 255, 255), width=1)
+    label = "开始手写"
+    font = load_font(23)
+    bbox = draw.textbbox((0, 0), label, font=font)
+    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    draw.text((bx + (bw - tw) / 2, by + (bh - th) / 2 - 2), label,
+              font=font, fill=(255, 255, 255))
+
+    # 标注模式左上角的状态提示
+    hud = [96, 170, 352, 214]
+    draw.rounded_rectangle(hud, radius=10, fill=(22, 24, 32))
+    draw.text((hud[0] + 14, hud[1] + 10), "颜色：红    线宽：3",
+              font=load_font(17), fill=(255, 255, 255))
 
     # 图注
-    draw.text((72, 622), "界面示意图（实际为无边框悬浮按钮 + 全屏画布）",
+    draw.text((72, 622), "界面示意图（圆角渐变悬浮按钮 + 全屏冻结画布）",
               font=load_font(18), fill=(110, 118, 134))
 
     DOCS.mkdir(parents=True, exist_ok=True)

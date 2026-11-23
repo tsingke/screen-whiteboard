@@ -16,8 +16,8 @@ body:
   - type: input
     id: python
     attributes:
-      label: Python 与 Pillow 版本
-      placeholder: Python 3.12.4, Pillow 11.0
+      label: Python 与 PySide6 版本
+      placeholder: Python 3.12.4, PySide6 6.10
   - type: textarea
     id: steps
     attributes:

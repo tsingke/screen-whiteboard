@@ -14,17 +14,26 @@ jobs:
   test:
     name: Tests
     runs-on: ubuntu-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
+      - name: Install system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1 libxkbcommon-x11-0 libxcb-cursor0 \
+            libdbus-1-3 libfontconfig1 libglib2.0-0
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt zstandard
+          python -m pip install -r requirements.txt ruff
+      - name: Lint
+        run: ruff check screen_whiteboard tools tests main.py
       - name: Run unit tests
-        run: python -m unittest discover -s tests -v
+        run: QT_QPA_PLATFORM=offscreen python -m unittest discover -s tests -v
 
   windows:
     name: Windows
@@ -34,21 +43,26 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt pyinstaller
       - name: Build
         run: >
-          pyinstaller --noconfirm --clean --onefile --windowed
+          pyinstaller --noconfirm --clean --onedir --windowed
           --workpath build/pyinstaller --distpath dist
           --name ScreenWhiteboard --icon assets/screen-whiteboard.ico
+          --exclude-module PySide6.QtQml --exclude-module PySide6.QtQuick
+          --exclude-module PySide6.QtWebEngineCore --exclude-module PySide6.Qt3DCore
+          --exclude-module PySide6.QtMultimedia
           main.py
+      - name: Package folder
+        run: python -c "import shutil; shutil.make_archive('ScreenWhiteboard-Windows', 'zip', 'dist', 'ScreenWhiteboard')"
       - uses: actions/upload-artifact@v4
         with:
-          name: windows-binary
-          path: dist/ScreenWhiteboard.exe
+          name: windows-app
+          path: ScreenWhiteboard-Windows.zip
 
   macos:
     name: macOS
@@ -58,7 +72,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -70,6 +84,9 @@ jobs:
           --name ScreenWhiteboard
           --osx-bundle-identifier io.github.tsingke.screenwhiteboard
           --icon assets/screen-whiteboard.icns
+          --exclude-module PySide6.QtQml --exclude-module PySide6.QtQuick
+          --exclude-module PySide6.QtWebEngineCore --exclude-module PySide6.Qt3DCore
+          --exclude-module PySide6.QtMultimedia
           main.py
       - name: Set bundle metadata
         run: |
@@ -108,7 +125,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: windows-binary
+          name: windows-app
           path: artifacts/windows
       - uses: actions/download-artifact@v4
         with:
@@ -118,13 +135,15 @@ jobs:
         run: |
           set -e
           mkdir -p "pkg/Windows版" "pkg/macOS版"
-          cp artifacts/windows/ScreenWhiteboard.exe "pkg/Windows版/"
+          unzip -q artifacts/windows/ScreenWhiteboard-Windows.zip -d "pkg/Windows版"
           cp packaging/使用说明.txt "pkg/Windows版/使用说明.txt"
           cp LICENSE "pkg/Windows版/LICENSE.txt"
+          cp THIRD_PARTY_NOTICES.md "pkg/Windows版/THIRD_PARTY_NOTICES.md"
           cp artifacts/macos/ScreenWhiteboard-macOS.dmg "pkg/macOS版/"
           cp artifacts/macos/ScreenWhiteboard-macOS.zip "pkg/macOS版/"
           cp packaging/使用说明.txt "pkg/macOS版/使用说明.txt"
           cp LICENSE "pkg/macOS版/LICENSE.txt"
+          cp THIRD_PARTY_NOTICES.md "pkg/macOS版/THIRD_PARTY_NOTICES.md"
           ( cd pkg && zip -r "../ScreenWhiteboard-${GITHUB_REF_NAME}-Windows-macOS.zip" . )
           ls -lh *.zip
       - uses: actions/upload-artifact@v4
@@ -145,15 +164,15 @@ jobs:
           path: artifacts
       - name: Prepare assets
         run: |
-          cp artifacts/windows-binary/ScreenWhiteboard.exe ScreenWhiteboard-Windows.exe
+          cp artifacts/windows-app/ScreenWhiteboard-Windows.zip ScreenWhiteboard-Windows.zip
           cp artifacts/macos-app/ScreenWhiteboard-macOS.zip ScreenWhiteboard-macOS.zip
           cp artifacts/macos-app/ScreenWhiteboard-macOS.dmg ScreenWhiteboard-macOS.dmg
           cp artifacts/all-platforms/ScreenWhiteboard-*-Windows-macOS.zip .
-          sha256sum ScreenWhiteboard-Windows.exe ScreenWhiteboard-macOS.zip ScreenWhiteboard-macOS.dmg ScreenWhiteboard-*-Windows-macOS.zip > SHA256SUMS.txt
+          sha256sum ScreenWhiteboard-Windows.zip ScreenWhiteboard-macOS.zip ScreenWhiteboard-macOS.dmg ScreenWhiteboard-*-Windows-macOS.zip > SHA256SUMS.txt
       - uses: softprops/action-gh-release@v2
         with:
           files: |
-            ScreenWhiteboard-Windows.exe
+            ScreenWhiteboard-Windows.zip
             ScreenWhiteboard-macOS.zip
             ScreenWhiteboard-macOS.dmg
             ScreenWhiteboard-*-Windows-macOS.zip

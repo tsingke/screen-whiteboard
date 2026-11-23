@@ -13,6 +13,11 @@ pyinstaller --noconfirm --clean --windowed \
   --name ScreenWhiteboard \
   --osx-bundle-identifier io.github.tsingke.screenwhiteboard \
   --icon assets/screen-whiteboard.icns \
+  --exclude-module PySide6.QtQml \
+  --exclude-module PySide6.QtQuick \
+  --exclude-module PySide6.QtWebEngineCore \
+  --exclude-module PySide6.Qt3DCore \
+  --exclude-module PySide6.QtMultimedia \
   main.py
 
 echo

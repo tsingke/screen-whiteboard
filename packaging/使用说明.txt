@@ -1,17 +1,19 @@
 屏幕白板 Screen Whiteboard
 ========================
 
-一个开源的屏幕标注教学工具：右上角悬浮「开始手写」按钮，点击后冻结屏幕，
+一个开源的屏幕标注工具：右上角悬浮「开始手写」按钮，点击后冻结屏幕，
 用鼠标在画面上书写、圈画，按 S 保存截图。
 
-版本：1.0.2
+采用 Qt 原生渲染，自动适配 Retina 与高 DPI 屏幕，笔迹清晰、书写流畅。
+
+版本：2.0.0
 主页：https://github.com/tsingke/screen-whiteboard
 许可：MIT License，Copyright (c) 2026 tsingke
 
 Windows
 -------
 
-1. 双击 Windows\ScreenWhiteboard.exe 启动。
+1. 双击 Windows版\ScreenWhiteboard\ScreenWhiteboard.exe 启动。
 2. 首次运行可能被 SmartScreen 拦截：点击「更多信息」→「仍要运行」。
 3. 如需覆盖全部显示器，在命令提示符中运行：
    ScreenWhiteboard.exe --all-monitors

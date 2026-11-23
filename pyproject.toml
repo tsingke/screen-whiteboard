@@ -1,12 +1,12 @@
 [project]
 name = "screen-whiteboard"
-version = "1.0.2"
-description = "开源屏幕白板教学工具：悬浮按钮、全屏标注、截图保存（Windows/macOS/Linux）"
+version = "2.0.0"
+description = "开源屏幕白板工具：Qt 原生 HiDPI、流畅手写、全屏标注与截图保存"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 license = { text = "MIT" }
 authors = [{ name = "tsingke", email = "tsingke@hotmail.com" }]
-keywords = ["whiteboard", "annotation", "screen", "classroom", "tkinter", "windows", "macos"]
+keywords = ["whiteboard", "annotation", "screen", "handwriting", "qt", "hidpi", "windows", "macos"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Win32 (MS Windows)",
@@ -16,7 +16,10 @@ classifiers = [
     "Topic :: Education",
     "Topic :: Multimedia :: Graphics :: Capture :: Screen Capture",
 ]
-dependencies = ["Pillow>=9.0"]
+dependencies = ["PySide6-Essentials>=6.6"]
+
+[project.optional-dependencies]
+dev = ["Pillow>=9.0", "PyInstaller>=6.0", "ruff>=0.6"]
 
 [project.scripts]
 screen-whiteboard = "screen_whiteboard.app:main"

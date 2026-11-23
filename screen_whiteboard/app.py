@@ -1,21 +1,29 @@
 # Copyright (c) 2026 tsingke <tsingke@hotmail.com>
 # SPDX-License-Identifier: MIT
 
-"""应用入口：悬浮按钮 + 标注层调度。"""
+"""应用入口：悬浮按钮与标注层调度。"""
 
 from __future__ import annotations
 
 import argparse
 import json
 import sys
-import tkinter as tk
 from dataclasses import asdict
 from pathlib import Path
-from tkinter import messagebox
 from typing import Optional, Sequence
 
+from PySide6.QtCore import QTimer
+from PySide6.QtGui import QFont, QGuiApplication
+from PySide6.QtWidgets import QApplication, QMessageBox
+
 from . import __version__
-from .capture import ScreenCaptureError, grab_screen
+from .capture import (
+    ScreenCaptureError,
+    grab_screen,
+    open_screen_recording_settings,
+    request_screen_capture_access,
+    screen_capture_allowed,
+)
 from .config import (
     Settings,
     default_base_dir,
@@ -23,112 +31,98 @@ from .config import (
     load_settings,
     save_settings,
 )
-from .help import HelpWindow
-from .overlay import AnnotationOverlay
-from .platform_utils import copy_settings, enable_dpi_awareness, screen_metrics
+from .help import HelpDialog
+from .launcher import Launcher
+from .overlay import Overlay
+from .platform_utils import configure_high_dpi, copy_settings, pick_font_family
 
 
 class WhiteboardApp:
-    """管理右上角悬浮按钮与全屏标注层。"""
+    """负责悬浮按钮、标注层生命周期与错误提示。"""
 
-    def __init__(self, root: tk.Tk, settings: Settings) -> None:
-        self.root = root
+    def __init__(self, app: QApplication, settings: Settings) -> None:
+        self.app = app
         self.settings = settings
-        self._drag_offset: Optional[tuple[int, int]] = None
-        self._busy = False
-
-        self._build_launcher()
-
-    def _build_launcher(self) -> None:
-        s = self.settings
-        self.root.overrideredirect(True)
-        self.root.attributes("-topmost", True)
-        self.root.configure(bg=s.launcher_bg)
-
-        self.button = tk.Button(
-            self.root,
-            text=s.launcher_text,
-            command=self.start_annotation,
-            bg=s.launcher_bg,
-            fg=s.launcher_fg,
-            activebackground=s.launcher_active_bg,
-            activeforeground=s.launcher_fg,
-            relief="flat",
-            borderwidth=0,
-            highlightthickness=0,
-            padx=s.launcher_padx,
-            pady=s.launcher_pady,
-            font=(s.launcher_font_family, s.launcher_font_size, "bold"),
-            cursor="hand2",
-        )
-        self.button.pack()
-
-        self.button.bind("<ButtonPress-1>", self._on_press)
-        self.button.bind("<B1-Motion>", self._on_drag)
-        self.button.bind("<ButtonRelease-1>", self._on_release)
-        for sequence in ("<ButtonRelease-2>", "<ButtonRelease-3>"):
-            self.button.bind(sequence, lambda _event: self.quit())
-
-        self.root.update_idletasks()
-        self.root.geometry(f"-{s.offset_x}+{s.offset_y}")
-
-    # ------------------------------------------------------------------ 拖动
-
-    def _on_press(self, event: tk.Event) -> None:
-        self._drag_offset = (
-            event.x_root - self.root.winfo_rootx(),
-            event.y_root - self.root.winfo_rooty(),
-        )
-
-    def _on_drag(self, event: tk.Event) -> None:
-        if self._drag_offset is None:
-            return
-        dx, dy = self._drag_offset
-        self.root.geometry(f"+{event.x_root - dx}+{event.y_root - dy}")
-
-    def _on_release(self, _event: tk.Event) -> None:
-        self._drag_offset = None
+        self.launcher = Launcher(settings)
+        self.launcher.startRequested.connect(self.start_annotation)
+        self.launcher.quitRequested.connect(self.app.quit)
+        self.overlay: Optional[Overlay] = None
+        self._pending = False
 
     # ------------------------------------------------------------------ 标注
 
     def start_annotation(self) -> None:
-        if self._busy:
+        if self._pending or self.overlay is not None:
             return
-        self._busy = True
-        self.root.withdraw()
-        self.root.update_idletasks()
-        # 留一点时间让桌面重绘，避免截到按钮残影
-        delay = int(max(0.0, self.settings.hide_delay) * 1000)
-        self.root.after(delay, self._open_overlay)
+        if not screen_capture_allowed():
+            self._show_permission_dialog()
+            return
+        self._pending = True
+        self.launcher.hide()
+        QTimer.singleShot(
+            int(max(0.0, self.settings.hide_delay) * 1000),
+            self._capture_and_show,
+        )
 
-    def _open_overlay(self) -> None:
+    def _capture_and_show(self) -> None:
         try:
-            width, height = screen_metrics(self.root)
-            capture = grab_screen(width, height, all_monitors=self.settings.all_monitors)
-            overlay = AnnotationOverlay(self.root, capture, self.settings)
-            overlay.wait()
+            screen = self.launcher.screen() or QGuiApplication.primaryScreen()
+            if screen is None:
+                raise ScreenCaptureError("没有检测到可用显示器。")
+            capture = grab_screen(screen, all_monitors=self.settings.all_monitors)
+            overlay = Overlay(capture, self.settings)
+            overlay.closed.connect(self._on_overlay_closed)
+            self.overlay = overlay
+
+            geometry = screen.geometry()
+            single_screen = (
+                capture.origin_x == geometry.x()
+                and capture.origin_y == geometry.y()
+                and capture.width == geometry.width()
+                and capture.height == geometry.height()
+            )
+            if sys.platform == "darwin" or not single_screen:
+                # macOS 的原生全屏会保留 30px 菜单栏，这里用无边框窗口铺满整屏
+                overlay.setGeometry(
+                    capture.origin_x, capture.origin_y,
+                    capture.width, capture.height,
+                )
+                overlay.show()
+            else:
+                # Windows / Linux 用原生全屏覆盖任务栏
+                overlay.showFullScreen()
         except ScreenCaptureError as exc:
-            messagebox.showerror("无法开始标注", str(exc))
-        except tk.TclError as exc:
-            messagebox.showerror("界面错误", f"无法创建标注窗口：\n{exc}")
-        except Exception as exc:  # 尽量不让异常直接杀掉进程
-            messagebox.showerror("出错了", f"标注模式启动失败：\n{exc}")
+            QMessageBox.critical(None, "无法开始标注", str(exc))
+            self._restore_launcher()
+        except Exception as exc:  # 保证界面不会因单次异常退出
+            QMessageBox.critical(None, "出错了", f"标注模式启动失败：\n{exc}")
+            self._restore_launcher()
         finally:
-            self._busy = False
-            try:
-                self.root.deiconify()
-                self.root.lift()
-                self.root.attributes("-topmost", True)
-            except tk.TclError:
-                pass
+            self._pending = False
 
-    # ------------------------------------------------------------------ 退出
+    def _on_overlay_closed(self) -> None:
+        self.overlay = None
+        self._restore_launcher()
 
-    def quit(self) -> None:
-        try:
-            self.root.destroy()
-        except tk.TclError:
-            pass
+    def _restore_launcher(self) -> None:
+        self.launcher.show()
+        self.launcher.raise_()
+
+    def _show_permission_dialog(self) -> None:
+        box = QMessageBox(self.launcher)
+        box.setWindowTitle("需要屏幕录制权限")
+        box.setIcon(QMessageBox.Information)
+        box.setText("macOS 需要「屏幕录制」权限，才能截取屏幕并进入标注模式。")
+        box.setInformativeText(
+            "请在「系统设置 → 隐私与安全性 → 屏幕录制」中勾选屏幕白板，"
+            "然后完全退出并重新打开程序。"
+        )
+        open_button = box.addButton("打开系统设置", QMessageBox.ActionRole)
+        box.addButton("稍后", QMessageBox.RejectRole)
+        box.exec()
+        if box.clickedButton() is open_button:
+            request_screen_capture_access()
+            open_screen_recording_settings()
 
 
 def _parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
@@ -145,7 +139,7 @@ def _parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         "--all-monitors",
         action="store_true",
         default=None,
-        help="截取全部显示器（默认仅主屏）",
+        help="截取全部显示器（默认仅按钮所在屏幕）",
     )
     parser.add_argument("--no-help", action="store_true", help="首次启动时不显示使用说明")
     parser.add_argument(
@@ -165,19 +159,18 @@ def _first_run_marker() -> Path:
     return default_base_dir() / "help_shown"
 
 
-def _maybe_show_help(root: tk.Tk, settings: Settings) -> None:
+def _maybe_show_help(settings: Settings) -> None:
     if not settings.help_on_first_run:
         return
     marker = _first_run_marker()
     if marker.exists():
         return
+    dialog = HelpDialog(settings)
+    dialog.exec()
     try:
-        window = HelpWindow(root, settings)
-        window.wait_window()
         marker.parent.mkdir(parents=True, exist_ok=True)
         marker.write_text("1\n", encoding="utf-8")
     except OSError:
-        # 配置目录不可写时静默跳过，不影响主功能。
         pass
 
 
@@ -201,29 +194,24 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print(f"已写入配置：{path}")
         return 0
 
-    enable_dpi_awareness()
+    configure_high_dpi()
+    app = QApplication([sys.argv[0]])
+    app.setApplicationName("ScreenWhiteboard")
+    app.setApplicationDisplayName("屏幕白板")
+    app.setOrganizationName("tsingke")
+    app.setStyle("Fusion")
 
-    try:
-        root = tk.Tk()
-    except tk.TclError as exc:
-        print(
-            "无法创建图形界面。请确认当前会话有可用的桌面环境，"
-            f"或在 Windows/macOS 上运行。\n{exc}",
-            file=sys.stderr,
-        )
-        return 1
+    family = pick_font_family(settings.launcher_font_family)
+    settings.launcher_font_family = family
+    app.setFont(QFont(family, 10))
 
-    root.title("屏幕白板")
-    app = WhiteboardApp(root, settings)
+    controller = WhiteboardApp(app, settings)
+    controller.launcher.show()
 
     if settings.help_on_first_run and not args.no_help:
-        root.after(350, lambda: _maybe_show_help(root, settings))
+        QTimer.singleShot(350, lambda: _maybe_show_help(settings))
 
-    try:
-        root.mainloop()
-    except KeyboardInterrupt:
-        app.quit()
-    return 0
+    return app.exec()
 
 
 if __name__ == "__main__":

@@ -1,170 +1,148 @@
 # Copyright (c) 2026 tsingke <tsingke@hotmail.com>
 # SPDX-License-Identifier: MIT
 
-"""跨平台屏幕截取。
+"""基于 Qt 的屏幕截取。
 
-Windows 使用 Pillow 的 ImageGrab；macOS 优先用 screencapture；
-Linux 依次尝试 ImageGrab 以及常见的截图命令行工具。
+Qt 的 grabWindow 直接返回物理像素，并保留屏幕的 devicePixelRatio，
+因此不需要任何缩放，文字与细线在高分屏上依然清晰。
 """
 
 from __future__ import annotations
 
-import os
-import shutil
+import ctypes
 import subprocess
 import sys
-import tempfile
 from dataclasses import dataclass
-from pathlib import Path
+from typing import List, Tuple
 
-from PIL import Image
+from PySide6.QtCore import QRectF
+from PySide6.QtGui import QColor, QGuiApplication, QImage, QPainter, QScreen
 
 
 class ScreenCaptureError(RuntimeError):
-    """截屏失败，调用方应提示用户检查权限或依赖。"""
+    """截屏失败，调用方应提示用户检查权限。"""
 
 
 @dataclass
 class Capture:
-    image: Image.Image
-    width: int
-    height: int
-    origin_x: int = 0
-    origin_y: int = 0
+    image: QImage
+    width: int          # 逻辑宽度
+    height: int         # 逻辑高度
+    origin_x: int
+    origin_y: int
+    dpr: float
 
 
-def _fit(image: Image.Image, width: int, height: int) -> Image.Image:
-    """把截图缩放到 Tk 的逻辑像素尺寸，保证坐标一一对应。"""
-    image = image.convert("RGB")
-    if width > 0 and height > 0 and image.size != (width, height):
-        image = image.resize((width, height), Image.LANCZOS)
-    return image
-
-
-def _windows_virtual_metrics() -> tuple[int, int, int, int]:
-    if sys.platform != "win32":
-        return 0, 0, 0, 0
+def screen_capture_allowed() -> bool:
+    """macOS 上检查屏幕录制权限；其他平台始终返回 True。"""
+    if sys.platform != "darwin":
+        return True
     try:
-        import ctypes
-
-        user32 = ctypes.windll.user32
-        return (
-            int(user32.GetSystemMetrics(76)),  # SM_XVIRTUALSCREEN
-            int(user32.GetSystemMetrics(77)),  # SM_YVIRTUALSCREEN
-            int(user32.GetSystemMetrics(78)),  # SM_CXVIRTUALSCREEN
-            int(user32.GetSystemMetrics(79)),  # SM_CYVIRTUALSCREEN
+        cg = ctypes.CDLL(
+            "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics"
         )
+        cg.CGPreflightScreenCaptureAccess.restype = ctypes.c_bool
+        return bool(cg.CGPreflightScreenCaptureAccess())
     except Exception:
-        return 0, 0, 0, 0
+        return True
 
 
-def _grab_windows(width: int, height: int, all_monitors: bool) -> Capture:
-    from PIL import ImageGrab
-
+def request_screen_capture_access() -> None:
+    """触发 macOS 的屏幕录制授权请求（系统只会在首次弹窗）。"""
+    if sys.platform != "darwin":
+        return
     try:
-        image = ImageGrab.grab(all_screens=all_monitors)
-    except Exception as exc:  # pragma: no cover - 取决于本机环境
-        raise ScreenCaptureError(f"Windows 截屏失败：{exc}") from exc
-
-    origin_x = origin_y = 0
-    target_w, target_h = width, height
-    if all_monitors:
-        origin_x, origin_y, vw, vh = _windows_virtual_metrics()
-        if vw > 0 and vh > 0:
-            target_w, target_h = vw, vh
-            image = _fit(image, vw, vh)
-    else:
-        image = _fit(image, width, height)
-    return Capture(image=image, width=target_w, height=target_h,
-                   origin_x=origin_x, origin_y=origin_y)
-
-
-def _temp_png() -> Path:
-    fd, name = tempfile.mkstemp(suffix=".png")
-    os.close(fd)
-    return Path(name)
-
-
-def _grab_macos(width: int, height: int) -> Capture:
-    tmp = _temp_png()
-    try:
-        result = subprocess.run(
-            ["screencapture", "-x", "-t", "png", str(tmp)],
-            capture_output=True,
+        cg = ctypes.CDLL(
+            "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics"
         )
-        if result.returncode == 0 and tmp.is_file() and tmp.stat().st_size > 0:
-            with Image.open(tmp) as img:
-                image = img.copy()
-            return Capture(_fit(image, width, height), width, height,
-                           origin_x=0, origin_y=0)
-    finally:
-        tmp.unlink(missing_ok=True)
-
-    # screencapture 不可用时退回 Pillow
-    try:
-        from PIL import ImageGrab
-
-        image = ImageGrab.grab()
-        return Capture(_fit(image, width, height), width, height,
-                       origin_x=0, origin_y=0)
-    except Exception as exc:
-        raise ScreenCaptureError(
-            "macOS 截屏失败。请到「系统设置 → 隐私与安全性 → 屏幕录制」"
-            "为终端或本程序授权后重试。"
-        ) from exc
-
-
-def _grab_linux(width: int, height: int) -> Capture:
-    try:
-        from PIL import ImageGrab
-
-        image = ImageGrab.grab()
-        return Capture(_fit(image, width, height), width, height,
-                       origin_x=0, origin_y=0)
+        cg.CGRequestScreenCaptureAccess.restype = ctypes.c_bool
+        cg.CGRequestScreenCaptureAccess()
     except Exception:
         pass
 
-    commands = [
-        ("gnome-screenshot", ["-f"]),
-        ("spectacle", ["-b", "-n", "-o"]),
-        ("scrot", []),
-        ("grim", []),
-        ("import", ["-window", "root"]),
-    ]
-    for name, prefix in commands:
-        exe = shutil.which(name)
-        if not exe:
-            continue
-        tmp = _temp_png()
-        try:
-            cmd = [exe] + prefix + [str(tmp)]
-            if name == "import":
-                cmd = [exe, "-window", "root", str(tmp)]
-            result = subprocess.run(cmd, capture_output=True)
-            if result.returncode == 0 and tmp.is_file() and tmp.stat().st_size > 0:
-                with Image.open(tmp) as img:
-                    image = img.copy()
-                return Capture(_fit(image, width, height), width, height,
-                               origin_x=0, origin_y=0)
-        except Exception:
-            continue
-        finally:
-            tmp.unlink(missing_ok=True)
 
-    raise ScreenCaptureError(
-        "Linux 截屏失败。请安装 gnome-screenshot、spectacle、scrot、grim "
-        "或 ImageMagick 之一，并确认当前桌面会话允许截图。"
+def open_screen_recording_settings() -> None:
+    if sys.platform != "darwin":
+        return
+    subprocess.Popen(
+        [
+            "open",
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
+        ]
     )
 
 
-def grab_screen(width: int, height: int, all_monitors: bool = False) -> Capture:
-    """截取屏幕。
+def _grab_screen_image(screen: QScreen) -> Tuple[QImage, float]:
+    pixmap = screen.grabWindow(0)
+    if pixmap.isNull():
+        raise ScreenCaptureError(
+            "无法读取屏幕画面。请检查系统的屏幕录制权限后重试。"
+        )
+    image = pixmap.toImage().convertToFormat(QImage.Format_ARGB32_Premultiplied)
+    geometry = screen.geometry()
+    dpr = screen.devicePixelRatio() or 1.0
+    if geometry.width() > 0:
+        measured = image.width() / float(geometry.width())
+        if measured > 0.1:
+            dpr = measured
+    image.setDevicePixelRatio(dpr)
+    return image, dpr
 
-    width/height 为 Tk 报告的逻辑像素尺寸。返回值中的 image 已缩放到
-    对应尺寸，画布坐标与图片坐标一致。
-    """
-    if sys.platform == "win32":
-        return _grab_windows(width, height, all_monitors)
-    if sys.platform == "darwin":
-        return _grab_macos(width, height)
-    return _grab_linux(width, height)
+
+def grab_screen(screen: QScreen, all_monitors: bool = False) -> Capture:
+    """截取指定屏幕；all_monitors 为 True 时拼接整个虚拟桌面。"""
+    if all_monitors:
+        return _grab_virtual_desktop()
+    image, dpr = _grab_screen_image(screen)
+    geometry = screen.geometry()
+    return Capture(
+        image=image,
+        width=geometry.width(),
+        height=geometry.height(),
+        origin_x=geometry.x(),
+        origin_y=geometry.y(),
+        dpr=dpr,
+    )
+
+
+def _grab_virtual_desktop() -> Capture:
+    screens: List[QScreen] = QGuiApplication.screens()
+    if not screens:
+        raise ScreenCaptureError("没有检测到可用显示器。")
+
+    virtual = screens[0].geometry()
+    for screen in screens[1:]:
+        virtual = virtual.united(screen.geometry())
+
+    dpr = max((s.devicePixelRatio() or 1.0) for s in screens)
+    background = QColor(0, 0, 0)
+    canvas = QImage(
+        max(1, int(round(virtual.width() * dpr))),
+        max(1, int(round(virtual.height() * dpr))),
+        QImage.Format_ARGB32_Premultiplied,
+    )
+    canvas.fill(background)
+
+    painter = QPainter(canvas)
+    painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
+    for screen in screens:
+        image, _ = _grab_screen_image(screen)
+        geometry = screen.geometry()
+        target = QRectF(
+            (geometry.x() - virtual.x()) * dpr,
+            (geometry.y() - virtual.y()) * dpr,
+            geometry.width() * dpr,
+            geometry.height() * dpr,
+        )
+        painter.drawImage(target, image)
+    painter.end()
+
+    canvas.setDevicePixelRatio(dpr)
+    return Capture(
+        image=canvas,
+        width=virtual.width(),
+        height=virtual.height(),
+        origin_x=virtual.x(),
+        origin_y=virtual.y(),
+        dpr=dpr,
+    )

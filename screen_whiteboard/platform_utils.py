@@ -1,60 +1,52 @@
 # Copyright (c) 2026 tsingke <tsingke@hotmail.com>
 # SPDX-License-Identifier: MIT
 
-"""平台相关的初始化。"""
+"""Qt 初始化与平台适配。"""
 
 from __future__ import annotations
 
 import copy
 import sys
-import tkinter as tk
-from typing import Any, Optional
+from typing import Any
+
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFontDatabase, QGuiApplication
+from PySide6.QtWidgets import QApplication
 
 
-def enable_dpi_awareness() -> Optional[str]:
-    """在 Windows 上启用高 DPI 感知。
-
-    必须在创建 Tk 根窗口之前调用。返回实际生效的方式，便于日志输出。
-    """
-    if sys.platform != "win32":
-        return None
-
+def configure_high_dpi() -> None:
+    """启用逐显示器 DPI 缩放。必须在 QApplication 创建之前调用。"""
     try:
-        import ctypes
-
-        user32 = ctypes.windll.user32
-        set_context = getattr(user32, "SetProcessDpiAwarenessContext", None)
-        if set_context is not None:
-            # DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4
-            if set_context(ctypes.c_void_p(-4)):
-                return "per-monitor-v2"
+        QGuiApplication.setHighDpiScaleFactorRoundingPolicy(
+            Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
+        )
+    except Exception:
+        pass
+    try:
+        QApplication.setAttribute(Qt.ApplicationAttribute.AA_UseHighDpiPixmaps, True)
     except Exception:
         pass
 
+
+def pick_font_family(configured: str) -> str:
+    """优先使用配置字体，找不到时退回系统中常见的中文字体。"""
     try:
-        import ctypes
-
-        shcore = ctypes.windll.shcore
-        # PROCESS_PER_MONITOR_DPI_AWARE = 2
-        if shcore.SetProcessDpiAwareness(2) == 0:
-            return "per-monitor"
+        families = set(QFontDatabase.families())
     except Exception:
-        pass
-
-    try:
-        import ctypes
-
-        if ctypes.windll.user32.SetProcessDPIAware():
-            return "system"
-    except Exception:
-        pass
-
-    return None
-
-
-def screen_metrics(root: tk.Misc) -> tuple[int, int]:
-    """返回主屏幕的逻辑尺寸。"""
-    return int(root.winfo_screenwidth()), int(root.winfo_screenheight())
+        return configured
+    candidates = [
+        configured,
+        "PingFang SC" if sys.platform == "darwin" else "",
+        "Microsoft YaHei UI" if sys.platform == "win32" else "",
+        "Noto Sans CJK SC",
+        "Source Han Sans SC",
+        "WenQuanYi Micro Hei",
+        "Arial",
+    ]
+    for family in candidates:
+        if family and family in families:
+            return family
+    return configured
 
 
 def copy_settings(settings: Any, **overrides: Any) -> Any:

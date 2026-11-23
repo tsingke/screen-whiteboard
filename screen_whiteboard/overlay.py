@@ -1,22 +1,39 @@
 # Copyright (c) 2026 tsingke <tsingke@hotmail.com>
 # SPDX-License-Identifier: MIT
 
-"""全屏标注层。"""
+"""全屏标注层：原生 HiDPI 渲染 + 增量绘制。"""
 
 from __future__ import annotations
 
-import tkinter as tk
 from datetime import datetime
 from pathlib import Path
-from tkinter import filedialog
-from typing import Optional
+from typing import List, Optional
 
-from PIL import ImageTk
+from PySide6.QtCore import QRect, QRectF, Qt, QTimer, Signal
+from PySide6.QtGui import (
+    QColor,
+    QFont,
+    QFontMetrics,
+    QImage,
+    QKeyEvent,
+    QMouseEvent,
+    QPainter,
+)
+from PySide6.QtWidgets import QFileDialog, QWidget
 
 from .capture import Capture
 from .config import Settings
 from .keymap import ActionType, resolve_key
-from .strokes import Stroke, render_strokes
+from .strokes import (
+    Stroke,
+    compose_ink,
+    draw_dot,
+    draw_stroke,
+    incremental_path,
+    pen_for,
+    stroke_bounds,
+    tail_path,
+)
 
 COLOR_NAMES = {
     "r": "红",
@@ -28,219 +45,262 @@ COLOR_NAMES = {
 }
 
 
-class AnnotationOverlay:
-    """覆盖在冻结画面之上的画布。
+class Overlay(QWidget):
+    """覆盖在冻结画面上的无边框画布。"""
 
-    使用 overrideredirect 的无边框窗口，铺满被截屏的区域。
-    """
+    closed = Signal()
 
-    def __init__(self, master: tk.Misc, capture: Capture, settings: Settings) -> None:
-        self.master = master
+    def __init__(self, capture: Capture, settings: Settings) -> None:
+        super().__init__(
+            None,
+            Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Window,
+        )
         self.capture = capture
         self.settings = settings
 
         self.color = settings.colors[settings.default_color]
         self.width = settings.default_width
+        self.strokes: List[Stroke] = []
+        self.current: Optional[Stroke] = None
 
-        self.strokes: list[Stroke] = []
-        self._stroke: Optional[Stroke] = None
-        self._stroke_tag: Optional[str] = None
-        self._counter = 0
-        self._hud_job: Optional[str] = None
+        self._ink_painter: Optional[QPainter] = None
+        self._closed = False
+        self._shown_once = False
+        self._hud_text = ""
+        self._hud_visible = False
+        self._hud_rect = QRect()
 
-        self.top = tk.Toplevel(master)
-        self.top.overrideredirect(True)
-        self.top.attributes("-topmost", True)
-        self.top.geometry(
-            f"{capture.width}x{capture.height}"
-            f"+{capture.origin_x}+{capture.origin_y}"
+        self.setAttribute(Qt.WA_OpaquePaintEvent, True)
+        self.setFocusPolicy(Qt.StrongFocus)
+        self.setCursor(Qt.CrossCursor)
+        self.setMouseTracking(True)
+        self.setGeometry(
+            capture.origin_x, capture.origin_y, capture.width, capture.height
         )
-        self.top.configure(bg="white")
 
-        self.canvas = tk.Canvas(
-            self.top,
-            width=capture.width,
-            height=capture.height,
-            bg="white",
-            highlightthickness=0,
-            bd=0,
-            cursor=settings.cursor,
+        self.ink = QImage(
+            capture.image.size(), QImage.Format_ARGB32_Premultiplied
         )
-        self.canvas.pack(fill="both", expand=True)
+        self.ink.fill(Qt.transparent)
+        self.ink.setDevicePixelRatio(capture.dpr)
 
-        self.photo = ImageTk.PhotoImage(capture.image)
-        self.canvas.create_image(0, 0, anchor="nw", image=self.photo, tags=("background",))
+        self._hud_timer = QTimer(self)
+        self._hud_timer.setSingleShot(True)
+        self._hud_timer.timeout.connect(self._hide_hud)
 
-        self.canvas.bind("<Button-1>", self._on_press)
-        self.canvas.bind("<B1-Motion>", self._on_drag)
-        self.canvas.bind("<ButtonRelease-1>", self._on_release)
-        self.canvas.bind("<Key>", self._on_key)
-        self.canvas.bind("<Escape>", lambda _event: self.close())
-
-        self.top.bind("<Key>", self._on_key)
-        self.top.bind("<Escape>", lambda _event: self.close())
-
-        self.top.protocol("WM_DELETE_WINDOW", self.close)
-        self.top.update_idletasks()
-        self.top.focus_force()
-        self.canvas.focus_force()
-        try:
-            self.top.grab_set()
-        except tk.TclError:
-            # 某些窗口管理器不允许抢占输入，不影响键盘绑定。
-            pass
+        self._font = QFont(settings.launcher_font_family, 12)
+        self._font.setBold(True)
 
     # ------------------------------------------------------------------ 绘制
 
-    def _on_press(self, event: tk.Event) -> None:
-        self._counter += 1
-        tag = f"stroke-{self._counter}"
-        self._stroke = Stroke(points=[], color=self.color, width=self.width, tag=tag)
-        self._stroke_tag = tag
-        self.strokes.append(self._stroke)
-        self._stroke.append(event.x, event.y)
-        radius = max(1, self.width / 2.0)
-        self.canvas.create_oval(
-            event.x - radius, event.y - radius,
-            event.x + radius, event.y + radius,
-            fill=self.color, outline=self.color, tags=(tag, "ink"),
-        )
+    def paintEvent(self, _event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setRenderHint(QPainter.TextAntialiasing, True)
+        painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
+        painter.drawImage(0, 0, self.capture.image)
+        painter.drawImage(0, 0, self.ink)
+        self._draw_hud(painter)
+        painter.end()
 
-    def _on_drag(self, event: tk.Event) -> None:
-        if self._stroke is None:
-            self._on_press(event)
-            return
-        previous = self._stroke.points[-1]
-        self._stroke.append(event.x, event.y)
-        self.canvas.create_line(
-            previous[0], previous[1], event.x, event.y,
-            fill=self._stroke.color,
-            width=max(1, self._stroke.width),
-            capstyle=tk.ROUND,
-            joinstyle=tk.ROUND,
-            smooth=False,
-            tags=(self._stroke_tag, "ink"),
-        )
-
-    def _on_release(self, _event: tk.Event) -> None:
-        self._stroke = None
-        self._stroke_tag = None
-
-    # ------------------------------------------------------------------ 键盘
-
-    def _on_key(self, event: tk.Event) -> str:
-        # ControlMask = 0x4；macOS 上 Command 走 Mod1 = 0x8
-        ctrl = bool(event.state & 0x4 or event.state & 0x8)
-        action = resolve_key(event.char, event.keysym, ctrl=ctrl, colors=self.settings.colors)
-        if action.type is ActionType.COLOR:
-            self.color = str(action.value)
-            self._show_hud()
-        elif action.type is ActionType.WIDTH:
-            self.width = int(action.value)
-            self._show_hud()
-        elif action.type is ActionType.CLEAR:
-            self.clear()
-        elif action.type is ActionType.SAVE:
-            self.save()
-        elif action.type is ActionType.UNDO:
-            self.undo()
-        elif action.type is ActionType.CLOSE:
-            self.close()
-        return "break"
-
-    def _show_hud(self) -> None:
+    def _status_text(self) -> str:
         name = "自定义"
         for key, value in self.settings.colors.items():
             if value.lower() == self.color.lower():
                 name = COLOR_NAMES.get(key, key)
                 break
-        self.canvas.delete("hud")
-        text_id = self.canvas.create_text(
-            36, 32, anchor="nw",
-            text=f"颜色：{name}    线宽：{self.width}",
-            fill="#ffffff",
-            font=(self.settings.launcher_font_family, 14, "bold"),
-            tags=("hud",),
-        )
-        box = self.canvas.bbox(text_id)
-        if box:
-            rect = self.canvas.create_rectangle(
-                box[0] - 12, box[1] - 8, box[2] + 12, box[3] + 8,
-                fill="#202124", outline="", tags=("hud",),
-            )
-            self.canvas.tag_lower(rect, text_id)
-        if self._hud_job is not None:
-            self.top.after_cancel(self._hud_job)
-        self._hud_job = self.top.after(1200, lambda: self.canvas.delete("hud"))
+        return f"颜色：{name}    线宽：{self.width}"
 
-    # ------------------------------------------------------------------ 动作
+    def _hud_geometry(self) -> QRect:
+        metrics = QFontMetrics(self._font)
+        text = self._hud_text or self._status_text()
+        width = metrics.horizontalAdvance(text) + 28
+        height = metrics.height() + 16
+        return QRect(20, 20, width, height)
+
+    def _draw_hud(self, painter: QPainter) -> None:
+        if not self._hud_visible:
+            return
+        rect = self._hud_rect
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(22, 24, 32, 225))
+        painter.drawRoundedRect(QRectF(rect), 10, 10)
+        painter.setPen(QColor("#ffffff"))
+        painter.setFont(self._font)
+        painter.drawText(QRectF(rect), Qt.AlignCenter, self._hud_text)
+
+    def _show_hud_once(self, text: str) -> None:
+        self._hud_text = text
+        self._hud_rect = self._hud_geometry().adjusted(-4, -4, 4, 4)
+        self._hud_visible = True
+        self._hud_timer.start(1300)
+        self.update(self._hud_rect)
+
+    def _hide_hud(self) -> None:
+        self._hud_visible = False
+        self.update(self._hud_rect)
+
+    # ------------------------------------------------------------------ 笔迹
+
+    def _begin_ink(self) -> None:
+        if self._ink_painter is not None:
+            return
+        self._ink_painter = QPainter(self.ink)
+        self._ink_painter.setRenderHint(QPainter.Antialiasing, True)
+
+    def _end_ink(self) -> None:
+        if self._ink_painter is not None:
+            self._ink_painter.end()
+            self._ink_painter = None
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        if event.button() != Qt.LeftButton:
+            event.accept()
+            return
+        point = (event.position().x(), event.position().y())
+        self.current = Stroke(points=[point], color=self.color, width=self.width)
+        self.strokes.append(self.current)
+        self._begin_ink()
+        assert self._ink_painter is not None
+        draw_dot(self._ink_painter, point, self.width, self.color)
+        rect = stroke_bounds([point], self.width).toAlignedRect()
+        self.update(rect)
+        event.accept()
+
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
+        if self.current is None or not (event.buttons() & Qt.LeftButton):
+            event.accept()
+            return
+        position = event.position()
+        previous = self.current.last()
+        if abs(position.x() - previous[0]) < 0.4 and abs(position.y() - previous[1]) < 0.4:
+            event.accept()
+            return
+
+        self.current.append(position.x(), position.y())
+        assert self._ink_painter is not None
+        self._ink_painter.setPen(pen_for(self.current))
+        self._ink_painter.setBrush(Qt.NoBrush)
+        path = incremental_path(self.current.points)
+        if path is not None:
+            self._ink_painter.drawPath(path)
+        rect = stroke_bounds(self.current.points[-4:], self.width).toAlignedRect()
+        self.update(rect)
+        event.accept()
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        if event.button() == Qt.LeftButton and self.current is not None:
+            assert self._ink_painter is not None
+            path = tail_path(self.current.points)
+            if path is not None:
+                self._ink_painter.setPen(pen_for(self.current))
+                self._ink_painter.setBrush(Qt.NoBrush)
+                self._ink_painter.drawPath(path)
+                self.update(stroke_bounds(self.current.points[-2:], self.width).toAlignedRect())
+            self._end_ink()
+            self.current = None
+        event.accept()
+
+    # ------------------------------------------------------------------ 操作
 
     def clear(self) -> None:
-        """只清除笔迹，保留作为背景的屏幕画面。"""
-        self.canvas.delete("ink")
+        self._end_ink()
         self.strokes.clear()
-        self._stroke = None
-        self._stroke_tag = None
+        self.current = None
+        self.ink.fill(Qt.transparent)
+        self.update()
 
     def undo(self) -> None:
         if not self.strokes:
             return
-        stroke = self.strokes.pop()
-        if stroke.tag:
-            self.canvas.delete(stroke.tag)
-        self._stroke = None
-        self._stroke_tag = None
+        self._end_ink()
+        self.strokes.pop()
+        self.current = None
+        self._repaint_ink()
+        self.update()
+
+    def _repaint_ink(self) -> None:
+        self.ink.fill(Qt.transparent)
+        painter = QPainter(self.ink)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        for stroke in self.strokes:
+            draw_stroke(painter, stroke)
+        painter.end()
 
     def save(self) -> None:
+        self._end_ink()
         default_name = f"白板_{datetime.now():%Y%m%d_%H%M%S}.png"
-        path = filedialog.asksaveasfilename(
-            parent=self.top,
-            title="保存截图",
-            initialfile=default_name,
-            initialdir=str(self.settings.resolved_save_dir()),
-            defaultextension=".png",
-            filetypes=[
-                ("PNG 图片", "*.png"),
-                ("JPEG 图片", "*.jpg *.jpeg"),
-                ("所有文件", "*.*"),
-            ],
+        start = self.settings.resolved_save_dir() / default_name
+        path, selected = QFileDialog.getSaveFileName(
+            self,
+            "保存截图",
+            str(start),
+            "PNG 图片 (*.png);;JPEG 图片 (*.jpg *.jpeg)",
         )
         if not path:
             return
 
         target = Path(path)
         if target.suffix.lower() not in (".png", ".jpg", ".jpeg"):
-            target = target.with_suffix(".png")
+            target = target.with_suffix(".jpg" if "JPEG" in selected else ".png")
 
-        scale = self.capture.image.width / max(1, self.capture.width)
-        image = render_strokes(self.capture.image, self.strokes, scale=scale)
-        try:
-            if target.suffix.lower() in (".jpg", ".jpeg"):
-                image.save(target, quality=95, optimize=True)
-            else:
-                image.save(target, optimize=True)
-        except OSError as exc:
-            from tkinter import messagebox
+        image = compose_ink(self.capture.image, self.ink)
 
-            messagebox.showerror("保存失败", f"无法写入文件：\n{exc}", parent=self.top)
+        fmt = "JPEG" if target.suffix.lower() in (".jpg", ".jpeg") else "PNG"
+        ok = image.save(str(target), fmt, 95 if fmt == "JPEG" else -1)
+        if not ok:
+            from PySide6.QtWidgets import QMessageBox
+
+            QMessageBox.critical(self, "保存失败", f"无法写入文件：\n{target}")
             return
         self.close()
 
-    def close(self) -> None:
-        if self._hud_job is not None:
-            try:
-                self.top.after_cancel(self._hud_job)
-            except tk.TclError:
-                pass
-            self._hud_job = None
-        try:
-            self.top.grab_release()
-        except tk.TclError:
-            pass
-        try:
-            self.top.destroy()
-        except tk.TclError:
-            pass
+    # ------------------------------------------------------------------ 键盘
 
-    def wait(self) -> None:
-        self.top.wait_window()
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        ctrl = bool(event.modifiers() & (Qt.ControlModifier | Qt.MetaModifier))
+        if event.key() == Qt.Key_Escape:
+            action = resolve_key("", "Escape", colors=self.settings.colors)
+        elif ctrl and event.key() == Qt.Key_Z:
+            action = resolve_key("z", "z", ctrl=True, colors=self.settings.colors)
+        elif ctrl and event.key() == Qt.Key_S:
+            action = resolve_key("s", "s", ctrl=True, colors=self.settings.colors)
+        else:
+            text = event.text()
+            action = resolve_key(text, text, colors=self.settings.colors)
+
+        if action.type is ActionType.COLOR:
+            self.color = str(action.value)
+            self._show_hud_once(self._status_text())
+        elif action.type is ActionType.WIDTH:
+            self.width = int(action.value)
+            self._show_hud_once(self._status_text())
+        elif action.type is ActionType.CLEAR:
+            self.clear()
+            self._show_hud_once("已清空")
+        elif action.type is ActionType.SAVE:
+            self.save()
+        elif action.type is ActionType.UNDO:
+            self.undo()
+            self._show_hud_once("已撤销")
+        elif action.type is ActionType.CLOSE:
+            self.close()
+        event.accept()
+
+    # ------------------------------------------------------------------ 生命周期
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self.activateWindow()
+        self.raise_()
+        self.setFocus(Qt.OtherFocusReason)
+        if not self._shown_once:
+            self._shown_once = True
+            self._show_hud_once(self._status_text())
+
+    def closeEvent(self, event) -> None:
+        self._end_ink()
+        if not self._closed:
+            self._closed = True
+            self.closed.emit()
+        super().closeEvent(event)

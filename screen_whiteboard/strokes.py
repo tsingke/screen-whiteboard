@@ -1,22 +1,21 @@
 # Copyright (c) 2026 tsingke <tsingke@hotmail.com>
 # SPDX-License-Identifier: MIT
 
-"""笔迹模型与离屏渲染。
+"""笔迹模型与高质量渲染。
 
-保存截图时把笔迹重绘到原始截图上，而不是重新抓屏，这样：
-1. 不会把白板窗口本身拍进图片；
-2. 不会把保存前弹出的其他窗口拍进去；
-3. 渲染过程可单元测试。
+所有坐标均为逻辑像素；渲染时按屏幕的 devicePixelRatio 放大到物理像素，
+因此在 Retina / 高 DPI 屏幕上不会因缩放而发虚。
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Iterable, List, Sequence, Tuple
+from typing import Iterable, List, Optional, Sequence, Tuple
 
-from PIL import Image, ImageColor, ImageDraw
+from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtGui import QColor, QImage, QPainter, QPainterPath, QPen
 
-Point = Tuple[int, int]
+Point = Tuple[float, float]
 
 
 @dataclass
@@ -24,58 +23,135 @@ class Stroke:
     points: List[Point] = field(default_factory=list)
     color: str = "#e53935"
     width: int = 3
-    tag: str = ""
 
-    def append(self, x: int, y: int) -> None:
-        self.points.append((int(x), int(y)))
+    def append(self, x: float, y: float) -> None:
+        self.points.append((float(x), float(y)))
 
-
-def rgb(color: str) -> Tuple[int, int, int]:
-    """把 Tk/PIL 支持的任意颜色写法转成 RGB 三元组。"""
-    try:
-        value = ImageColor.getrgb(color)
-    except ValueError:
-        value = ImageColor.getrgb("#e53935")
-    if len(value) == 4:
-        value = value[:3]
-    return value  # type: ignore[return-value]
+    def last(self) -> Point:
+        return self.points[-1]
 
 
-def _draw_cap(draw: ImageDraw.ImageDraw, x: float, y: float, radius: float,
-              color: Tuple[int, int, int]) -> None:
-    if radius <= 0:
+def qcolor(value: str) -> QColor:
+    color = QColor(value)
+    return color if color.isValid() else QColor("#e53935")
+
+
+def pen_for(stroke: Stroke) -> QPen:
+    pen = QPen(qcolor(stroke.color), max(1.0, float(stroke.width)))
+    pen.setCapStyle(Qt.RoundCap)
+    pen.setJoinStyle(Qt.RoundJoin)
+    return pen
+
+
+def _mid(a: Point, b: Point) -> QPointF:
+    return QPointF((a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0)
+
+
+def _qpoint(p: Point) -> QPointF:
+    return QPointF(float(p[0]), float(p[1]))
+
+
+def incremental_path(points: Sequence[Point]) -> Optional[QPainterPath]:
+    """返回新增的一段平滑曲线（用于实时绘制）。
+
+    points 是当前笔迹的全部点。新点到达时只绘制最后一小段，
+    使用二次贝塞尔曲线连接相邻点的中点，得到丝滑的笔迹。
+    """
+    n = len(points)
+    if n < 2:
+        return None
+    path = QPainterPath()
+    if n == 2:
+        path.moveTo(_qpoint(points[0]))
+        path.lineTo(_mid(points[0], points[1]))
+        return path
+    start = _mid(points[-3], points[-2])
+    end = _mid(points[-2], points[-1])
+    path.moveTo(start)
+    path.quadTo(_qpoint(points[-2]), end)
+    return path
+
+
+def tail_path(points: Sequence[Point]) -> Optional[QPainterPath]:
+    """抬笔时补齐最后半段，避免笔迹在最后一个采样点前结束。"""
+    if len(points) < 2:
+        return None
+    path = QPainterPath()
+    path.moveTo(_mid(points[-2], points[-1]))
+    path.lineTo(_qpoint(points[-1]))
+    return path
+
+
+def stroke_path(points: Sequence[Point]) -> QPainterPath:
+    """完整的平滑笔迹路径（用于撤销后重绘）。"""
+    path = QPainterPath()
+    if not points:
+        return path
+    path.moveTo(_qpoint(points[0]))
+    if len(points) == 1:
+        return path
+    for index in range(1, len(points)):
+        if index == 1:
+            path.lineTo(_mid(points[0], points[1]))
+        else:
+            start = _mid(points[index - 2], points[index - 1])
+            end = _mid(points[index - 1], points[index])
+            path.moveTo(start)
+            path.quadTo(_qpoint(points[index - 1]), end)
+    path.moveTo(_mid(points[-2], points[-1]))
+    path.lineTo(_qpoint(points[-1]))
+    return path
+
+
+def draw_dot(painter: QPainter, point: Point, width: int, color: str) -> None:
+    radius = max(0.5, width / 2.0)
+    painter.setPen(Qt.NoPen)
+    painter.setBrush(qcolor(color))
+    painter.drawEllipse(_qpoint(point), radius, radius)
+
+
+def draw_stroke(painter: QPainter, stroke: Stroke) -> None:
+    if not stroke.points:
         return
-    draw.ellipse(
-        [x - radius, y - radius, x + radius, y + radius],
-        fill=color,
+    painter.setPen(pen_for(stroke))
+    painter.setBrush(Qt.NoBrush)
+    painter.drawPath(stroke_path(stroke.points))
+    draw_dot(painter, stroke.points[0], stroke.width, stroke.color)
+
+
+def stroke_bounds(points: Sequence[Point], width: int) -> QRectF:
+    if not points:
+        return QRectF()
+    xs = [p[0] for p in points]
+    ys = [p[1] for p in points]
+    pad = width / 2.0 + 2.0
+    return QRectF(
+        min(xs) - pad, min(ys) - pad,
+        max(xs) - min(xs) + 2 * pad, max(ys) - min(ys) + 2 * pad,
     )
 
 
-def render_strokes(
-    base: Image.Image,
-    strokes: Iterable[Stroke],
-    scale: float = 1.0,
-) -> Image.Image:
-    """返回一张新图片：base 的副本 + 所有笔迹。"""
-    image = base.convert("RGB").copy()
-    draw = ImageDraw.Draw(image)
-    ratio = float(scale) if scale else 1.0
+def render_strokes(base: QImage, strokes: Iterable[Stroke]) -> QImage:
+    """把笔迹绘制到截图的物理像素副本上，返回新图片。
 
+    base 已通过 setDevicePixelRatio 记录缩放比例，QPainter 会自动把
+    逻辑坐标映射到物理像素，因此这里不需要再手工缩放。
+    """
+    image = base.copy()
+    painter = QPainter(image)
+    painter.setRenderHint(QPainter.Antialiasing, True)
+    painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
     for stroke in strokes:
-        if not stroke.points:
-            continue
-        color = rgb(stroke.color)
-        width = max(1, int(round(max(1, stroke.width) * ratio)))
-        points: Sequence[Point] = [
-            (int(round(x * ratio)), int(round(y * ratio))) for x, y in stroke.points
-        ]
-        if len(points) == 1:
-            _draw_cap(draw, points[0][0], points[0][1], width / 2.0, color)
-            continue
-        draw.line(points, fill=color, width=width, joint="curve")
-        # freehand 线段的端点用圆头补齐，效果与 Tk 的 capstyle=round 一致
-        radius = width / 2.0
-        _draw_cap(draw, points[0][0], points[0][1], radius, color)
-        _draw_cap(draw, points[-1][0], points[-1][1], radius, color)
+        draw_stroke(painter, stroke)
+    painter.end()
+    return image
 
+
+def compose_ink(background: QImage, ink: QImage) -> QImage:
+    """把透明笔迹层合成到背景图上，保持两者的物理像素一一对应。"""
+    image = background.copy()
+    painter = QPainter(image)
+    painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
+    painter.drawImage(0, 0, ink)
+    painter.end()
     return image

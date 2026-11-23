@@ -3,7 +3,7 @@
 
 """配置模型与读写。
 
-配置全部有安全默认值；项目不会在未授权的情况下修改系统设置。
+所有字段都有安全默认值；项目不会在未授权的情况下修改系统设置。
 """
 
 from __future__ import annotations
@@ -70,18 +70,20 @@ class Settings:
     max_width: int = 9
 
     launcher_text: str = "开始手写"
-    launcher_bg: str = "#1a73e8"
+    launcher_bg: str = "#6c4cf1"
+    launcher_bg_bottom: str = "#9b6bff"
     launcher_fg: str = "#ffffff"
-    launcher_active_bg: str = "#1557b0"
+    launcher_active_bg: str = "#5b3fe6"
     launcher_font_family: str = field(default_factory=default_font_family)
-    launcher_font_size: int = 12
-    launcher_padx: int = 14
-    launcher_pady: int = 8
+    launcher_font_size: int = 13
+    launcher_padx: int = 20
+    launcher_pady: int = 10
+    launcher_radius: int = 16
+    launcher_shadow: bool = True
 
     offset_x: int = 20
     offset_y: int = 10
-    hide_delay: float = 0.35
-    cursor: str = "crosshair"
+    hide_delay: float = 0.15
 
     save_dir: str = ""
     all_monitors: bool = False
@@ -103,6 +105,9 @@ class Settings:
         self.offset_x = max(0, int(self.offset_x))
         self.offset_y = max(0, int(self.offset_y))
         self.launcher_font_size = max(8, min(36, int(self.launcher_font_size)))
+        self.launcher_padx = max(4, min(80, int(self.launcher_padx)))
+        self.launcher_pady = max(2, min(60, int(self.launcher_pady)))
+        self.launcher_radius = max(0, min(40, int(self.launcher_radius)))
         if self.default_color not in self.colors:
             self.default_color = next(iter(self.colors))
 

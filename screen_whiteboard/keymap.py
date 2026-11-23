@@ -41,10 +41,10 @@ def resolve_key(
     ctrl: bool = False,
     colors: Optional[Dict[str, str]] = None,
 ) -> Action:
-    """根据 Tk 的 event.char / event.keysym / Ctrl 状态给出动作。
+    """根据按键字符、符号与 Ctrl 状态给出动作。
 
     Esc 退出标注模式；Ctrl+Z 撤销；Ctrl+S 保存。
-    小写字母键用于切换颜色与工具，与原始软件保持一致。
+    小写字母键用于切换颜色与工具。
     """
     colors = colors or {}
     key = (char or "").lower()
